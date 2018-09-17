@@ -1,110 +1,79 @@
 # -*- coding: utf-8 -*-
+import sys
+import os
+import textwrap
+import configparser
 
-import PIL
 from PIL import ImageFont
 from PIL import Image
 from PIL import ImageDraw
 
-import sys
+config = configparser.ConfigParser()
+config.read('config.ini')
+config = config['DEFAULT']
+
+TEMP_FILE   = os.path.join(config['ASSET_PATH'], config['TEMP_FILENAME'])
+OUT_FILE    = os.path.join(config['ASSET_PATH'], config['OUT_FILENAME'])
+SWOOSH_FILE = os.path.join(config['ASSET_PATH'], config['SWOOSH_ASSET'])
+
+FONT_SIZE = config.getint('FONT_SIZE')
+NIKE_OFFSET_X = config.getint('NIKE_OFFSET_X')
+NIKE_OFFSET_Y = config.getint('NIKE_OFFSET_Y')
 
 
-def make_meme(topString, bottomString, filename):
+def make_meme(quote):
 
-	img = Image.open(filename)
-	imageSize = img.size
+    swoosh  = Image.open(SWOOSH_FILE)
+    img     = Image.open(TEMP_FILE)
+    white_color = (255, 255, 255)
 
-	# find biggest font size that works
-	fontSize = int(imageSize[1]/5)
-	font = ImageFont.truetype("/Library/Fonts/Impact.ttf", fontSize)
-	topTextSize = font.getsize(topString)
-	bottomTextSize = font.getsize(bottomString)
-	while topTextSize[0] > imageSize[0]-20 or bottomTextSize[0] > imageSize[0]-20:
-		fontSize = fontSize - 1
-		font = ImageFont.truetype("/Library/Fonts/Impact.ttf", fontSize)
-		topTextSize = font.getsize(topString)
-		bottomTextSize = font.getsize(bottomString)
+    # find biggest font size that works
+    font = ImageFont.truetype(
+        config['FONT_PATH'],
+        FONT_SIZE)
 
-	# find top centered position for top text
-	topTextPositionX = (imageSize[0]/2) - (topTextSize[0]/2)
-	topTextPositionY = 0
-	topTextPosition = (topTextPositionX, topTextPositionY)
+    text_size = font.getsize(quote)
 
-	# find bottom centered position for bottom text
-	bottomTextPositionX = (imageSize[0]/2) - (bottomTextSize[0]/2)
-	bottomTextPositionY = imageSize[1] - bottomTextSize[1]
-	bottomTextPosition = (bottomTextPositionX, bottomTextPositionY)
+    # wrap quote
+    para = textwrap.wrap(quote, width=FONT_SIZE)
 
-	draw = ImageDraw.Draw(img)
+    # draw canvas
+    draw = ImageDraw.Draw(img)
 
-	# draw outlines
-	# there may be a better way
-	outlineRange = int(fontSize/15)
-	for x in range(-outlineRange, outlineRange+1):
-		for y in range(-outlineRange, outlineRange+1):
-			draw.text((topTextPosition[0]+x, topTextPosition[1]+y), topString, (0,0,0), font=font)
-			draw.text((bottomTextPosition[0]+x, bottomTextPosition[1]+y), bottomString, (0,0,0), font=font)
+    bottom_text_position_y = (img.size[1] / 2) - text_size[1]
 
-	draw.text(topTextPosition, topString, (255,255,255), font=font)
-	draw.text(bottomTextPosition, bottomString, (255,255,255), font=font)
+    # center text, break lines and set padding
+    current_h, pad = bottom_text_position_y, 7
+    for line in para:
+        w, h = font.getsize(line)
+        bottom_text_position_x = (img.size[0] / 2) - (w / 2)
+        draw.text((bottom_text_position_x, current_h), line, white_color, font=font)
+        current_h += h + pad
 
-	img.save("temp.png")
+    nike_text_size = font.getsize(config['NIKE_QUOTE'])
+    nike_quote_position_x = (img.size[0] / 2) - ((nike_text_size[0] / 2) - NIKE_OFFSET_X)
+    nike_quote_position_y = ((img.size[1]) - nike_text_size[1]) - NIKE_OFFSET_X
+    draw.text(
+        (nike_quote_position_x, nike_quote_position_y),
+        config['NIKE_QUOTE'], white_color, font=font)
 
-def get_upper(somedata):
-	'''
-	Handle Python 2/3 differences in argv encoding
-	'''
-	result = ''
-	try:
-		result = somedata.decode("utf-8").upper()
-	except:
-		result = somedata.upper()
-	return result
-
-def get_lower(somedata):
-	'''
-	Handle Python 2/3 differences in argv encoding
-	'''
-	result = ''
-	try:
-		result = somedata.decode("utf-8").lower()
-	except:
-		result = somedata.lower()		
-
-	return result
-
+    img   = img.convert('L')
+    final = Image.new('L', img.size)
+    final.paste(img)
+    final.paste(
+        swoosh,
+        (int(nike_quote_position_x - NIKE_OFFSET_Y), int(nike_quote_position_y - NIKE_OFFSET_X)),
+        swoosh)
+    final.save(OUT_FILE)
 
 
 if __name__ == '__main__':
+    try:
+        _quote = str(sys.argv[1])
+    except IndexError:
+        _quote = config['DEFAULT_QUOTE']
 
-	args_len = len(sys.argv)
-	topString = ''
-	meme = 'standard'
+    if len(_quote) > 70:
+        raise EOFError('Use a shorter quote!')
 
-	if args_len == 1:
-		# no args except the launch of the script
-		print('args plz')
-
-	elif args_len == 2:
-		# only one argument, use standard meme
-		bottomString = get_upper(sys.argv[-1])
-
-	elif args_len == 3:
-		# args give meme and one line
-		bottomString = get_upper(sys.argv[-1])
-		meme = get_lower(sys.argv[1])
-
-	elif args_len == 4:
-		# args give meme and two lines
-		topString = get_upper(sys.argv[-2])
-		bottomString = get_upper(sys.argv[-1])
-		meme = get_lower(sys.argv[1])
-	else:
-		# so many args
-		# what do they mean
-		# too intense
-		print('to many argz')
-
-	print(meme)	
-	filename = str(meme)+'.jpg'
-	make_meme(topString, bottomString, filename)	
-
+    make_meme(_quote)
